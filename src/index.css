@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    @apply bg-zinc-950 text-zinc-100 min-h-screen font-sans antialiased selection:bg-emerald-500 selection:text-black;
+  }
+}
+
+/* Custom scanline animation for camera viewfinder */
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(1000%); }
+}
+
+.animate-scanline {
+  animation: scanline 2.5s ease-in-out infinite;
+}
