@@ -442,9 +442,10 @@ export function App() {
                       onChange={(e) => setChunkSizeSetting(Number(e.target.value))}
                       className="bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs rounded px-1.5 py-0.5"
                     >
-                      <option value={350}>350B (Small/Dense)</option>
-                      <option value={450}>450B (Standard)</option>
-                      <option value={550}>550B (High Capacity)</option>
+                      <option value={180}>180B (Ultra Chunky / Easy Scan)</option>
+                      <option value={240}>240B (Recommended)</option>
+                      <option value={350}>350B (Dense)</option>
+                      <option value={450}>450B (Max Capacity)</option>
                     </select>
                   </div>
                   <div className="flex items-center gap-1.5">

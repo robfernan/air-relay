@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "QRJump - Air-Gapped Optical File Transfer",
+  "version": "1.0.0",
+  "description": "Zero-connection optical file transfer via animated QR streams and bidirectional ACK flow control.",
+  "icons": {
+    "16": "public/favicon.svg",
+    "48": "public/favicon.svg",
+    "128": "public/favicon.svg"
+  },
+  "action": {
+    "default_title": "Open QRJump",
+    "default_popup": "index.html"
+  },
+  "permissions": [
+    "storage"
+  ]
+}

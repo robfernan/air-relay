@@ -2,10 +2,10 @@ import { deflateSync } from 'fflate';
 import { crc32, uint8ArrayToBase64 } from './crc32';
 import type { DataFrame, InitFrame } from './types';
 
-// Chunk size 450 bytes creates optimal QR density (Version 10-14 QR code with Low EC)
-// easily readable by standard smartphone cameras at 10-15 FPS.
-export const DEFAULT_CHUNK_SIZE = 450;
-export const DEFAULT_WINDOW_SIZE = 10;
+// Chunk size 220-250 bytes produces large, chunky QR pixels (Version 7-9)
+// easily readable by budget laptop webcams, Moondrop MIAD01, and smartphones.
+export const DEFAULT_CHUNK_SIZE = 240;
+export const DEFAULT_WINDOW_SIZE = 8;
 
 export interface PreparedTransfer {
   initFrame: InitFrame;

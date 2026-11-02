@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@zxing/browser": "^0.2.1",
+    "@zxing/library": "^0.23.0",
     "canvas-confetti": "^1.9.4",
     "fflate": "^0.8.3",
     "jsqr": "^1.4.0",
@@ -29,6 +31,8 @@
     "oxlint": "^1.89.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~7.0.2",
-    "vite": "^8.3.5"
+    "vite": "^8.3.5",
+    "vite-plugin-mkcert": "^2.1.0",
+    "vite-plugin-web-extension": "^4.5.1"
   }
 }
