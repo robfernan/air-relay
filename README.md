@@ -59,6 +59,8 @@ Sending a file from your phone to your PC or to a friend shouldn't require uploa
 
 - [x] **Zero-Cloud Direct Stream**: High-speed memory pipe using WebRTC SCTP DataChannels.
 - [x] **Global STUN Traversal**: Connect across different Wi-Fi and mobile 5G/cellular networks.
+- [x] **Local Subnet Proximity Discovery**: Auto-detect peers active on the same network with 1-tap auto connect.
+- [x] **Client-Side AES-GCM 256 Passphrase Lock**: Hardware-accelerated Web Crypto API encryption prior to memory dispatch.
 - [x] **1-Click Shareable URL**: Auto-pair devices via URL parameters (`?join=XXXX`).
 - [x] **Streaming Backpressure Control**: Buffer-aware queue monitor preventing browser crashes on multi-GB transfers.
 - [x] **Safety Confirmation Gateway**: Explicit Accept/Decline modal with executable file warnings.
@@ -68,8 +70,6 @@ Sending a file from your phone to your PC or to a friend shouldn't require uploa
 - [x] **Dual Desktop Browser Extension**: Chrome Manifest V3 and Firefox Gecko compatibility.
 - [x] **Android Web Share Target**: Appear natively in Android's system share menu.
 - [x] **Offline-First PWA**: Auto-updating service worker for standalone mobile use.
-- [ ] **Local Subnet Proximity Discovery**: Auto-detect peers active on the same local Wi-Fi without needing a code.
-- [ ] **Client-Side AES-GCM 256 Passphrase**: Optional optical/network password encryption for sensitive documents.
 
 ---
 

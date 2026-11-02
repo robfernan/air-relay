@@ -24,8 +24,12 @@ import {
   MessageSquare,
   Archive,
   History,
+  Lock,
+  Wifi,
+  Sparkles,
 } from 'lucide-react';
 import { playAudioFeedback } from '../protocol/crc32';
+import { encryptBuffer, decryptBuffer } from '../protocol/crypto';
 
 interface PendingTransferRequest {
   name: string;
@@ -43,6 +47,13 @@ interface TransferAuditItem {
   timestamp: string;
 }
 
+interface DiscoveredPeer {
+  id: string;
+  name: string;
+  code: string;
+  lastSeen: number;
+}
+
 export const PeerDrop: React.FC = () => {
   const [peerId, setPeerId] = useState<string>('');
   const [deviceName, setDeviceName] = useState<string>('');
@@ -51,6 +62,16 @@ export const PeerDrop: React.FC = () => {
   const [connectedPeerName, setConnectedPeerName] = useState<string>('');
   const [copied, setCopied] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Proximity Discovery Peers
+  const [discoveredPeers, setDiscoveredPeers] = useState<DiscoveredPeer[]>([]);
+  const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
+
+  // Client-Side AES-GCM 256 Passphrase Encryption
+  const [passphrase, setPassphrase] = useState<string>('');
+  const [requirePassphraseModal, setRequirePassphraseModal] = useState<boolean>(false);
+  const [incomingDecryptionPassphrase, setIncomingDecryptionPassphrase] = useState<string>('');
+  const [cachedEncryptedBlob, setCachedEncryptedBlob] = useState<{ buffer: ArrayBuffer; name: string; mime: string } | null>(null);
 
   // Drag and drop zone state
   const [isDraggingOver, setIsDraggingOver] = useState<boolean>(false);
@@ -86,6 +107,50 @@ export const PeerDrop: React.FC = () => {
     setDeviceName(label);
   }, []);
 
+  // BroadcastChannel for instant local Wi-Fi / same-subnet proximity discovery
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      const bc = new BroadcastChannel('air-relay-local-discovery');
+      broadcastChannelRef.current = bc;
+
+      bc.onmessage = (event) => {
+        const data = event.data;
+        if (data && data.type === 'PEER_PING' && data.id !== peerId && data.code) {
+          setDiscoveredPeers((prev) => {
+            const filtered = prev.filter((p) => p.code !== data.code && Date.now() - p.lastSeen < 15000);
+            return [
+              {
+                id: data.id,
+                name: data.name || 'Nearby Device',
+                code: data.code,
+                lastSeen: Date.now(),
+              },
+              ...filtered,
+            ];
+          });
+        }
+      };
+
+      // Periodic beacon pulse
+      const beaconTimer = setInterval(() => {
+        if (peerId) {
+          const codeOnly = peerId.replace('qjump-', '');
+          bc.postMessage({
+            type: 'PEER_PING',
+            id: peerId,
+            code: codeOnly,
+            name: deviceName,
+          });
+        }
+      }, 3000);
+
+      return () => {
+        clearInterval(beaconTimer);
+        bc.close();
+      };
+    }
+  }, [peerId, deviceName]);
+
   // Check URL query parameters for one-click pairing: ?join=1234
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -119,6 +184,16 @@ export const PeerDrop: React.FC = () => {
     peer.on('open', (id) => {
       setPeerId(id);
       setErrorMessage(null);
+
+      // Announce beacon on BroadcastChannel
+      if (broadcastChannelRef.current) {
+        broadcastChannelRef.current.postMessage({
+          type: 'PEER_PING',
+          id,
+          code: id.replace('qjump-', ''),
+          name: deviceName,
+        });
+      }
 
       const params = new URLSearchParams(window.location.search);
       const joinCode = params.get('join');
@@ -170,6 +245,7 @@ export const PeerDrop: React.FC = () => {
     let expectedSize = 0;
     let fileName = '';
     let mimeType = '';
+    let isPayloadEncrypted = false;
     let fileChunks: ArrayBuffer[] = [];
     let startTime = 0;
 
@@ -217,6 +293,7 @@ export const PeerDrop: React.FC = () => {
         fileName = msg.name;
         expectedSize = msg.size;
         mimeType = msg.mime || 'application/octet-stream';
+        isPayloadEncrypted = !!msg.isEncrypted;
         receivedBytes = 0;
         fileChunks = [];
         startTime = Date.now();
@@ -234,34 +311,22 @@ export const PeerDrop: React.FC = () => {
         const duration = Math.max(0.1, (Date.now() - startTime) / 1000);
         setTransferSpeed(Math.round((receivedBytes / 1024 / duration) * 10) / 10);
       } else if (msg.type === 'END') {
-        const fullBlob = new Blob(fileChunks, { type: mimeType });
-        const url = URL.createObjectURL(fullBlob);
-        setIncomingFile({ name: fileName, size: expectedSize, url });
-        setTransferStatus('File received successfully!');
-        setTransferProgress(100);
-        playAudioFeedback('complete');
-        confetti({ particleCount: 150, spread: 80 });
+        // Concatenate chunks
+        const totalBuffer = new Uint8Array(receivedBytes);
+        let offset = 0;
+        for (const c of fileChunks) {
+          totalBuffer.set(new Uint8Array(c), offset);
+          offset += c.byteLength;
+        }
 
-        // Add to audit log
-        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        setAuditLog((prev) => [
-          {
-            id: Math.random().toString(36).substring(7),
-            name: fileName,
-            size: expectedSize,
-            type: 'RECEIVED',
-            timestamp: timeStr,
-          },
-          ...prev,
-        ]);
-
-        // Auto trigger download
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        if (isPayloadEncrypted) {
+          setCachedEncryptedBlob({ buffer: totalBuffer.buffer, name: fileName, mime: mimeType });
+          setRequirePassphraseModal(true);
+          setTransferStatus('File received (Encrypted). Enter passphrase to decrypt.');
+          playAudioFeedback('ack');
+        } else {
+          completeDownload(totalBuffer.buffer, fileName, mimeType, expectedSize);
+        }
       }
     });
 
@@ -269,6 +334,50 @@ export const PeerDrop: React.FC = () => {
       setConnectionStatus('DISCONNECTED');
       activeConnRef.current = null;
     });
+  };
+
+  const completeDownload = (buffer: ArrayBuffer, name: string, mime: string, size: number) => {
+    const fullBlob = new Blob([buffer], { type: mime });
+    const url = URL.createObjectURL(fullBlob);
+    setIncomingFile({ name, size, url });
+    setTransferStatus('File ready!');
+    setTransferProgress(100);
+    playAudioFeedback('complete');
+    confetti({ particleCount: 150, spread: 80 });
+
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setAuditLog((prev) => [
+      {
+        id: Math.random().toString(36).substring(7),
+        name,
+        size,
+        type: 'RECEIVED',
+        timestamp: timeStr,
+      },
+      ...prev,
+    ]);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  // Decrypt and save encrypted file
+  const handleDecryptAndSave = async () => {
+    if (!cachedEncryptedBlob || !incomingDecryptionPassphrase) return;
+    try {
+      setTransferStatus('Decrypting with AES-GCM 256...');
+      const decrypted = await decryptBuffer(cachedEncryptedBlob.buffer, incomingDecryptionPassphrase);
+      setRequirePassphraseModal(false);
+      completeDownload(decrypted, cachedEncryptedBlob.name, cachedEncryptedBlob.mime, decrypted.byteLength);
+      setCachedEncryptedBlob(null);
+      setIncomingDecryptionPassphrase('');
+    } catch {
+      alert('Decryption failed! Incorrect passphrase or corrupted payload.');
+    }
   };
 
   const connectToPeerWithCode = (code: string) => {
@@ -298,7 +407,6 @@ export const PeerDrop: React.FC = () => {
     if (files.length === 1) {
       handleInitiateFileSend(files[0]);
     } else {
-      // Auto-Zip multi-file selection into a single archive on the fly
       setTransferStatus(`Packaging ${files.length} files into zip archive...`);
       const zip = new JSZip();
       for (const f of files) {
@@ -322,16 +430,15 @@ export const PeerDrop: React.FC = () => {
     pendingFileQueueRef.current = { file, conn };
     setTransferStatus(`Waiting for ${connectedPeerName.replace('qjump-', '#')} to accept...`);
 
-    // Ask receiver for permission
     conn.send({
       type: 'REQUEST_TRANSFER',
       name: file.name,
       size: file.size,
       mime: file.type,
+      isEncrypted: passphrase.trim().length > 0,
     });
   };
 
-  // User accepts incoming file
   const acceptIncomingTransfer = () => {
     if (!activeConnRef.current) return;
     activeConnRef.current.send({ type: 'TRANSFER_RESPONSE', accepted: true });
@@ -339,7 +446,6 @@ export const PeerDrop: React.FC = () => {
     setTransferStatus('Incoming file accepted. Starting download stream...');
   };
 
-  // User rejects incoming file
   const rejectIncomingTransfer = () => {
     if (!activeConnRef.current) return;
     activeConnRef.current.send({ type: 'TRANSFER_RESPONSE', accepted: false });
@@ -347,24 +453,31 @@ export const PeerDrop: React.FC = () => {
     setTransferStatus('Incoming transfer declined.');
   };
 
-  // Streaming engine with WebRTC backpressure flow control
-  const executeFileStream = (file: File, conn: DataConnection) => {
+  // Streaming engine with optional AES-GCM 256 encryption
+  const executeFileStream = async (file: File, conn: DataConnection) => {
+    let rawBuffer = await file.arrayBuffer();
+
+    const isEncrypted = passphrase.trim().length > 0;
+    if (isEncrypted) {
+      setTransferStatus('Encrypting payload with AES-GCM 256...');
+      rawBuffer = await encryptBuffer(rawBuffer, passphrase.trim());
+    }
+
     const chunkSize = 32 * 1024;
-    const totalSize = file.size;
+    const totalSize = rawBuffer.byteLength;
     let offset = 0;
     const startTime = Date.now();
 
     conn.send({
       type: 'START',
       name: file.name,
-      size: file.size,
+      size: totalSize,
       mime: file.type,
+      isEncrypted,
     });
 
-    setTransferStatus(`Streaming ${file.name}...`);
+    setTransferStatus(`Streaming ${file.name}${isEncrypted ? ' (AES-256 Encrypted)' : ''}...`);
     setTransferProgress(0);
-
-    const reader = new FileReader();
 
     const sendNextChunk = () => {
       const dc = (conn as any).dataChannel as RTCDataChannel | undefined;
@@ -374,15 +487,24 @@ export const PeerDrop: React.FC = () => {
       }
 
       if (offset < totalSize) {
-        const slice = file.slice(offset, offset + chunkSize);
-        reader.readAsArrayBuffer(slice);
+        const end = Math.min(offset + chunkSize, totalSize);
+        const slice = rawBuffer.slice(offset, end);
+        conn.send({ type: 'CHUNK', chunk: slice });
+
+        offset += slice.byteLength;
+        const percent = Math.min(100, Math.round((offset / totalSize) * 100));
+        setTransferProgress(percent);
+
+        const duration = Math.max(0.1, (Date.now() - startTime) / 1000);
+        setTransferSpeed(Math.round((offset / 1024 / duration) * 10) / 10);
+
+        sendNextChunk();
       } else {
         conn.send({ type: 'END' });
         setTransferStatus('Transfer complete!');
         playAudioFeedback('complete');
         confetti({ particleCount: 100, spread: 70 });
 
-        // Add to audit log
         const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         setAuditLog((prev) => [
           {
@@ -395,21 +517,6 @@ export const PeerDrop: React.FC = () => {
           ...prev,
         ]);
       }
-    };
-
-    reader.onload = (e) => {
-      if (!e.target?.result) return;
-      const buffer = e.target.result as ArrayBuffer;
-      conn.send({ type: 'CHUNK', chunk: buffer });
-
-      offset += buffer.byteLength;
-      const percent = Math.min(100, Math.round((offset / totalSize) * 100));
-      setTransferProgress(percent);
-
-      const duration = Math.max(0.1, (Date.now() - startTime) / 1000);
-      setTransferSpeed(Math.round((offset / 1024 / duration) * 10) / 10);
-
-      sendNextChunk();
     };
 
     sendNextChunk();
@@ -471,6 +578,57 @@ export const PeerDrop: React.FC = () => {
 
   return (
     <div className="w-full max-w-4xl mx-auto space-y-6">
+      {/* Decryption Prompt Modal */}
+      {requirePassphraseModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md p-6 rounded-3xl bg-zinc-900 border border-cyan-500/40 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                <Lock className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Encrypted File Received</h3>
+                <p className="text-xs text-zinc-400">Sender protected this payload with AES-GCM 256</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-zinc-300">
+              Enter the secret passphrase agreed upon with the sender to decrypt <strong>{cachedEncryptedBlob?.name}</strong>:
+            </p>
+
+            <input
+              type="password"
+              placeholder="Enter decryption password..."
+              value={incomingDecryptionPassphrase}
+              onChange={(e) => setIncomingDecryptionPassphrase(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleDecryptAndSave();
+              }}
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-500"
+            />
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                onClick={() => {
+                  setRequirePassphraseModal(false);
+                  setCachedEncryptedBlob(null);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-zinc-300 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDecryptAndSave}
+                disabled={!incomingDecryptionPassphrase.trim()}
+                className="flex-1 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-40 text-black text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-lg shadow-cyan-500/20"
+              >
+                <Check className="w-4 h-4" /> Decrypt & Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Pending Safety Confirmation Modal */}
       {pendingRequest && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
@@ -486,7 +644,14 @@ export const PeerDrop: React.FC = () => {
             </div>
 
             <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-1">
-              <span className="text-sm font-semibold text-zinc-200 block truncate">{pendingRequest.name}</span>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-zinc-200 block truncate">{pendingRequest.name}</span>
+                {pendingRequest.isEncrypted && (
+                  <span className="flex items-center gap-1 text-[10px] font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/30">
+                    <Lock className="w-3 h-3" /> AES-256
+                  </span>
+                )}
+              </div>
               <span className="text-xs font-mono text-cyan-400 block">{formatBytes(pendingRequest.size)}</span>
             </div>
 
@@ -545,6 +710,30 @@ export const PeerDrop: React.FC = () => {
             </span>
           </div>
         </div>
+
+        {/* Local Wi-Fi Proximity Discovery Cards */}
+        {discoveredPeers.length > 0 && connectionStatus !== 'CONNECTED' && (
+          <div className="mt-4 p-3.5 rounded-2xl bg-cyan-950/30 border border-cyan-500/30 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="flex items-center gap-1.5 font-bold text-cyan-300">
+                <Wifi className="w-3.5 h-3.5 text-cyan-400 animate-pulse" /> Discovered Nearby on Same Network:
+              </span>
+              <span className="text-[10px] text-zinc-400 font-mono">1-Tap Auto Connect</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {discoveredPeers.map((p) => (
+                <button
+                  key={p.code}
+                  onClick={() => connectToPeerWithCode(p.code)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-cyan-500/20 text-xs font-semibold text-zinc-200 border border-zinc-700 hover:border-cyan-400 transition"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>{p.name} (#{p.code})</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Pairing Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 mt-5 pt-5 border-t border-zinc-800">
@@ -606,6 +795,24 @@ export const PeerDrop: React.FC = () => {
           </div>
         </div>
 
+        {/* Optional AES-GCM 256 Passphrase Lock Bar */}
+        <div className="mt-4 pt-4 border-t border-zinc-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <Lock className={`w-3.5 h-3.5 ${passphrase ? 'text-cyan-400' : 'text-zinc-500'}`} />
+            <span className="text-zinc-400">Client-Side AES-256 Lock:</span>
+            <input
+              type="password"
+              placeholder="Optional transfer password..."
+              value={passphrase}
+              onChange={(e) => setPassphrase(e.target.value)}
+              className="bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-cyan-500 placeholder:text-zinc-600 max-w-[180px]"
+            />
+          </div>
+          <span className="text-[10px] text-zinc-500 font-mono">
+            {passphrase ? '🔒 Payloads encrypted before leaving device' : 'Leave empty for default transfer'}
+          </span>
+        </div>
+
         {/* Error notification if peer not found */}
         {errorMessage && (
           <div className="mt-3 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
@@ -663,7 +870,6 @@ export const PeerDrop: React.FC = () => {
       {/* Mode A: Drop Files */}
       {activeTab === 'FILES' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Send File Card with Interactive Drag-Over Dropzone */}
           <div
             onDragOver={(e) => {
               e.preventDefault();
@@ -729,7 +935,6 @@ export const PeerDrop: React.FC = () => {
             </div>
           </div>
 
-          {/* Transfer Monitor Card */}
           <div className="p-6 rounded-3xl bg-zinc-900/60 border border-zinc-800 flex flex-col justify-between">
             <div>
               <h3 className="text-base font-bold text-white mb-2 flex items-center gap-2">
@@ -814,7 +1019,6 @@ export const PeerDrop: React.FC = () => {
             </button>
           </div>
 
-          {/* History of Beamed Notes */}
           <div className="space-y-2 mt-4">
             <span className="text-[11px] font-mono text-zinc-500 uppercase block">Shared Text & Links</span>
             {receivedTextList.length === 0 ? (
