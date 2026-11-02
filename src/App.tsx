@@ -26,8 +26,12 @@ import { ReceiverEngine } from './protocol/receiver';
 import { playAudioFeedback } from './protocol/crc32';
 import type { InitFrame, DataFrame, AckFrame, FinFrame, ProtocolFrame, TransferMode, TransferRole } from './protocol/types';
 
+import { PeerDrop } from './components/PeerDrop';
+import { Wifi, Radio as RadioIcon } from 'lucide-react';
+
 export function App() {
   // App Modes & Global States
+  const [activeTab, setActiveTab] = useState<'AIRDROP' | 'OPTICAL'>('AIRDROP');
   const [role, setRole] = useState<TransferRole>('IDLE');
   const [mode, setMode] = useState<TransferMode>('SPLIT_DUPLEX');
   const [audioFeedback, setAudioFeedback] = useState<boolean>(true);
@@ -341,6 +345,33 @@ export function App() {
             </div>
           </div>
 
+          {/* Tab Switcher: Direct AirDrop vs Optical Screen-to-Camera */}
+          <div className="flex items-center p-1 bg-zinc-900 border border-zinc-800 rounded-2xl">
+            <button
+              onClick={() => setActiveTab('AIRDROP')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                activeTab === 'AIRDROP'
+                  ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/20'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              <Wifi className="w-3.5 h-3.5" />
+              <span>Direct AirDrop</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('OPTICAL')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                activeTab === 'OPTICAL'
+                  ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              <RadioIcon className="w-3.5 h-3.5" />
+              <span>Optical Air-Gap</span>
+            </button>
+          </div>
+
           {/* Quick Header Controls */}
           <div className="flex items-center gap-2">
             <button
@@ -389,8 +420,12 @@ export function App() {
 
       {/* Main Workspace Area */}
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-6 space-y-6">
-        {/* Role Selection / Hero (Shown when Idle) */}
-        {role === 'IDLE' && (
+        {activeTab === 'AIRDROP' ? (
+          <PeerDrop />
+        ) : (
+          <>
+            {/* Role Selection / Hero (Shown when Idle) */}
+            {role === 'IDLE' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch pt-4">
             {/* Sender Dropzone Card */}
             <div className="flex flex-col justify-between p-6 rounded-3xl bg-zinc-900/60 border-2 border-dashed border-zinc-800 hover:border-emerald-500/50 transition-all duration-300 group">
@@ -640,6 +675,8 @@ export function App() {
             </div>
           </div>
         )}
+        </>
+      )}
       </main>
 
       {/* Footer */}
