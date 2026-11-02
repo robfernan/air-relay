@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Peer, { type DataConnection } from 'peerjs';
+import JSZip from 'jszip';
 import confetti from 'canvas-confetti';
 import {
   Radio,
@@ -21,6 +22,8 @@ import {
   Smartphone,
   ShieldAlert,
   MessageSquare,
+  Archive,
+  History,
 } from 'lucide-react';
 import { playAudioFeedback } from '../protocol/crc32';
 
@@ -29,6 +32,15 @@ interface PendingTransferRequest {
   size: number;
   mime: string;
   sender: string;
+  isEncrypted?: boolean;
+}
+
+interface TransferAuditItem {
+  id: string;
+  name: string;
+  size: number;
+  type: 'SENT' | 'RECEIVED';
+  timestamp: string;
 }
 
 export const PeerDrop: React.FC = () => {
@@ -40,10 +52,14 @@ export const PeerDrop: React.FC = () => {
   const [copied, setCopied] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Tabs: Files vs Instant Text/Links
-  const [activeTab, setActiveTab] = useState<'FILES' | 'TEXT'>('FILES');
+  // Drag and drop zone state
+  const [isDraggingOver, setIsDraggingOver] = useState<boolean>(false);
+
+  // Tabs: Files vs Instant Text/Links vs Transfer Audit Log
+  const [activeTab, setActiveTab] = useState<'FILES' | 'TEXT' | 'AUDIT'>('FILES');
   const [textMessage, setTextMessage] = useState<string>('');
   const [receivedTextList, setReceivedTextList] = useState<{ text: string; time: string; sender: string }[]>([]);
+  const [auditLog, setAuditLog] = useState<TransferAuditItem[]>([]);
 
   // Safety: Accept / Decline prompt
   const [pendingRequest, setPendingRequest] = useState<PendingTransferRequest | null>(null);
@@ -58,7 +74,7 @@ export const PeerDrop: React.FC = () => {
   const activeConnRef = useRef<DataConnection | null>(null);
   const pendingFileQueueRef = useRef<{ file: File; conn: DataConnection } | null>(null);
 
-  // Auto-detect friendly device name (e.g. "Linux PC" or "Android Phone")
+  // Auto-detect friendly device name
   useEffect(() => {
     const ua = navigator.userAgent;
     let label = 'Unknown Device';
@@ -177,6 +193,7 @@ export const PeerDrop: React.FC = () => {
           size: msg.size,
           mime: msg.mime || 'application/octet-stream',
           sender: conn.peer.replace('qjump-', '#'),
+          isEncrypted: msg.isEncrypted,
         });
         return;
       }
@@ -225,6 +242,19 @@ export const PeerDrop: React.FC = () => {
         playAudioFeedback('complete');
         confetti({ particleCount: 150, spread: 80 });
 
+        // Add to audit log
+        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        setAuditLog((prev) => [
+          {
+            id: Math.random().toString(36).substring(7),
+            name: fileName,
+            size: expectedSize,
+            type: 'RECEIVED',
+            timestamp: timeStr,
+          },
+          ...prev,
+        ]);
+
         // Auto trigger download
         const a = document.createElement('a');
         a.href = url;
@@ -253,6 +283,32 @@ export const PeerDrop: React.FC = () => {
 
   const connectToPeer = () => {
     connectToPeerWithCode(targetPeerId);
+  };
+
+  // Multi-File & Folder Auto-Zip Handler
+  const handleMultipleFiles = async (fileList: FileList | File[]) => {
+    if (!activeConnRef.current || connectionStatus !== 'CONNECTED') {
+      alert('Please connect to another device first!');
+      return;
+    }
+
+    const files = Array.from(fileList);
+    if (files.length === 0) return;
+
+    if (files.length === 1) {
+      handleInitiateFileSend(files[0]);
+    } else {
+      // Auto-Zip multi-file selection into a single archive on the fly
+      setTransferStatus(`Packaging ${files.length} files into zip archive...`);
+      const zip = new JSZip();
+      for (const f of files) {
+        zip.file(f.name, f);
+      }
+      const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+      const timestamp = new Date().toISOString().slice(0, 10);
+      const zipFile = new File([zipBlob], `AirRelay_Batch_${timestamp}.zip`, { type: 'application/zip' });
+      handleInitiateFileSend(zipFile);
+    }
   };
 
   // Request transfer permission before streaming
@@ -325,6 +381,19 @@ export const PeerDrop: React.FC = () => {
         setTransferStatus('Transfer complete!');
         playAudioFeedback('complete');
         confetti({ particleCount: 100, spread: 70 });
+
+        // Add to audit log
+        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        setAuditLog((prev) => [
+          {
+            id: Math.random().toString(36).substring(7),
+            name: file.name,
+            size: totalSize,
+            type: 'SENT',
+            timestamp: timeStr,
+          },
+          ...prev,
+        ]);
       }
     };
 
@@ -395,7 +464,6 @@ export const PeerDrop: React.FC = () => {
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   };
 
-  // Check if incoming file is dangerous
   const isDangerousFile = (filename: string) => {
     const dangerous = ['.exe', '.bat', '.cmd', '.sh', '.vbs', '.apk', '.msi'];
     return dangerous.some((ext) => filename.toLowerCase().endsWith(ext));
@@ -465,7 +533,7 @@ export const PeerDrop: React.FC = () => {
                 </span>
               </div>
               <p className="text-xs text-zinc-400 mt-0.5">
-                Drop files, photos, or text links directly to any device. No Discord limits, no cloud storage.
+                Drop files, photos, or text links directly to any device. Zero cloud storage, zero Discord limits.
               </p>
             </div>
           </div>
@@ -553,7 +621,7 @@ export const PeerDrop: React.FC = () => {
         )}
       </div>
 
-      {/* Tabs: Drop Files vs Beam Text/Links */}
+      {/* Tabs: Drop Files vs Beam Text/Links vs Audit Log */}
       <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
         <div className="flex items-center gap-2">
           <button
@@ -577,6 +645,15 @@ export const PeerDrop: React.FC = () => {
               <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block animate-pulse" />
             )}
           </button>
+          <button
+            onClick={() => setActiveTab('AUDIT')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+              activeTab === 'AUDIT' ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/20' : 'text-zinc-400 hover:text-white'
+            }`}
+          >
+            <History className="w-3.5 h-3.5" />
+            <span>History ({auditLog.length})</span>
+          </button>
         </div>
         <span className="text-[11px] font-mono text-zinc-500 hidden sm:inline">
           {connectionStatus === 'CONNECTED' ? 'Ready to beam' : 'Waiting for connection'}
@@ -586,28 +663,59 @@ export const PeerDrop: React.FC = () => {
       {/* Mode A: Drop Files */}
       {activeTab === 'FILES' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Send File Card */}
-          <div className="p-6 rounded-3xl bg-zinc-900/60 border border-zinc-800 flex flex-col justify-between">
+          {/* Send File Card with Interactive Drag-Over Dropzone */}
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDraggingOver(true);
+            }}
+            onDragLeave={() => setIsDraggingOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setIsDraggingOver(false);
+              if (e.dataTransfer.files) handleMultipleFiles(e.dataTransfer.files);
+            }}
+            className={`p-6 rounded-3xl bg-zinc-900/60 border-2 transition-all duration-200 flex flex-col justify-between ${
+              isDraggingOver
+                ? 'border-cyan-400 bg-cyan-950/20 shadow-[0_0_30px_rgba(34,211,238,0.2)]'
+                : 'border-zinc-800'
+            }`}
+          >
             <div>
-              <h3 className="text-base font-bold text-white mb-2 flex items-center gap-2">
-                <Upload className="w-4 h-4 text-cyan-400" /> Send File
-              </h3>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Upload className="w-4 h-4 text-cyan-400" /> Send Files or Folders
+                </h3>
+                <span className="text-[10px] bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded font-mono">
+                  Multi-file Auto-Zip
+                </span>
+              </div>
               <p className="text-xs text-zinc-400 mb-6 leading-relaxed">
-                Supports photos, video clips, APKs, PDFs, and multi-GB zip archives with memory backpressure control.
+                Drag and drop multiple files or photos together. AirRelay automatically packages multi-item drops into a zip stream on the fly.
               </p>
 
-              <label className={`flex flex-col items-center justify-center p-8 rounded-2xl bg-zinc-950 border border-zinc-800 transition group ${connectionStatus === 'CONNECTED' ? 'cursor-pointer hover:border-cyan-500/50' : 'opacity-60 cursor-not-allowed'}`}>
-                <Upload className="w-8 h-8 text-cyan-400 mb-2 group-hover:scale-110 transition" />
-                <span className="text-sm font-semibold text-zinc-200">
-                  {connectionStatus === 'CONNECTED' ? 'Drop or select file to beam' : 'Connect to another device first'}
-                </span>
-                <span className="text-xs text-zinc-500 mt-1">Unlimited file size • Instant P2P</span>
+              <label className={`flex flex-col items-center justify-center p-8 rounded-2xl bg-zinc-950 border transition group ${connectionStatus === 'CONNECTED' ? 'cursor-pointer hover:border-cyan-500/50 border-zinc-800' : 'opacity-60 cursor-not-allowed border-zinc-900'}`}>
+                {isDraggingOver ? (
+                  <>
+                    <Archive className="w-10 h-10 text-cyan-400 mb-2 animate-bounce" />
+                    <span className="text-sm font-bold text-cyan-300">Release to Beam Items!</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-8 h-8 text-cyan-400 mb-2 group-hover:scale-110 transition" />
+                    <span className="text-sm font-semibold text-zinc-200">
+                      {connectionStatus === 'CONNECTED' ? 'Drop or choose files to beam' : 'Connect to another device first'}
+                    </span>
+                    <span className="text-xs text-zinc-500 mt-1">Multi-select enabled • Unlimited size</span>
+                  </>
+                )}
                 <input
                   type="file"
+                  multiple
                   className="hidden"
                   disabled={connectionStatus !== 'CONNECTED'}
                   onChange={(e) => {
-                    if (e.target.files?.[0]) handleInitiateFileSend(e.target.files[0]);
+                    if (e.target.files) handleMultipleFiles(e.target.files);
                   }}
                 />
               </label>
@@ -617,7 +725,7 @@ export const PeerDrop: React.FC = () => {
               <span className="flex items-center gap-1">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> DTLS 1.3 End-to-End Encrypted
               </span>
-              <span>Zero Upload Servers</span>
+              <span>Zero Cloud Uploads</span>
             </div>
           </div>
 
@@ -734,6 +842,41 @@ export const PeerDrop: React.FC = () => {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Mode C: Transfer Audit Log History */}
+      {activeTab === 'AUDIT' && (
+        <div className="p-6 rounded-3xl bg-zinc-900/60 border border-zinc-800 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <History className="w-4 h-4 text-cyan-400" /> Session Transfer Log
+            </h3>
+            <span className="text-[11px] font-mono text-zinc-500">Cleared on tab reload</span>
+          </div>
+
+          {auditLog.length === 0 ? (
+            <div className="p-8 rounded-2xl bg-zinc-950/60 border border-zinc-800 text-center text-xs text-zinc-500">
+              No files transferred in this session yet. Sent and received files will appear here.
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-72 overflow-y-auto">
+              {auditLog.map((item) => (
+                <div key={item.id} className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-between">
+                  <div className="flex items-center gap-3 truncate">
+                    <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded ${item.type === 'SENT' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/30' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'}`}>
+                      {item.type}
+                    </span>
+                    <span className="text-xs font-semibold text-zinc-200 truncate">{item.name}</span>
+                  </div>
+                  <div className="flex items-center gap-4 text-xs font-mono text-zinc-400 shrink-0">
+                    <span>{formatBytes(item.size)}</span>
+                    <span className="text-zinc-600">{item.timestamp}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

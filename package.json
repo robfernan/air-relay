@@ -12,6 +12,7 @@
   "dependencies": {
     "canvas-confetti": "^1.9.4",
     "fflate": "^0.8.3",
+    "jszip": "^3.10.2",
     "lucide-react": "^1.66.0",
     "peerjs": "^1.5.5",
     "react": "^19.3.1",
@@ -20,6 +21,7 @@
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
     "@types/canvas-confetti": "^1.9.0",
+    "@types/jszip": "^3.4.1",
     "@types/node": "^24.19.2",
     "@types/peerjs": "^1.1.0",
     "@types/react": "^19.3.0",
