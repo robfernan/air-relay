@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Volume2, VolumeX, ShieldCheck, Zap } from 'lucide-react';
+import { Volume2, VolumeX, ShieldCheck, Zap, ExternalLink } from 'lucide-react';
 import { PeerDrop } from './components/PeerDrop';
 
 export function App() {
@@ -26,8 +26,21 @@ export function App() {
           </div>
 
           {/* Header Controls */}
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-1.5 text-emerald-400 font-mono text-xs bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-xl">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  window.open(window.location.href, '_blank');
+                }
+              }}
+              title="Open in Full Tab / Full Window"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-semibold text-zinc-300 hover:text-white hover:bg-zinc-800 transition"
+            >
+              <ExternalLink className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="hidden sm:inline">Open in Tab</span>
+            </button>
+
+            <div className="hidden md:flex items-center gap-1.5 text-emerald-400 font-mono text-xs bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-xl">
               <ShieldCheck className="w-3.5 h-3.5" />
               <span>Zero-Cloud P2P</span>
             </div>
