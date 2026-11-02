@@ -9,6 +9,12 @@
 [![Firefox & Chrome Extension](https://img.shields.io/badge/Extension-Firefox%20%2B%20Chrome-blue?style=for-the-badge&logo=googlechrome)](https://github.com/robfernan/air-relay)
 [![License: MIT](https://img.shields.io/badge/License-MIT-zinc?style=for-the-badge)](LICENSE)
 
+<br/>
+
+<p align="center">
+  <img src="docs/assets/air-relay-preview.png" alt="AirRelay Dashboard & Pairing Interface" width="100%" style="border-radius: 12px; border: 1px solid #27272a; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);" />
+</p>
+
 ---
 
 ### 🔥 Why AirRelay?
