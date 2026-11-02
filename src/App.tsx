@@ -331,17 +331,17 @@ export function App() {
       <header className="sticky top-0 z-50 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-md px-4 py-3">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center font-black text-black text-lg shadow-lg shadow-emerald-500/20">
-              QJ
+            <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-cyan-500 to-emerald-400 flex items-center justify-center font-black text-black text-lg shadow-lg shadow-cyan-500/20">
+              AR
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-base font-bold tracking-tight text-white m-0">QRJump</h1>
-                <span className="text-[10px] font-mono uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-semibold">
-                  Air-Gapped Optical
+                <h1 className="text-base font-bold tracking-tight text-white m-0">AirRelay</h1>
+                <span className="text-[10px] font-mono uppercase bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-2 py-0.5 rounded-full font-semibold">
+                  Zero-Trust Transport
                 </span>
               </div>
-              <p className="text-[11px] text-zinc-400">Bidirectional optical file transfer over screen-to-camera</p>
+              <p className="text-[11px] text-zinc-400">Encrypted WebRTC P2P & Air-Gapped Optical Flow</p>
             </div>
           </div>
 
@@ -681,7 +681,7 @@ export function App() {
 
       {/* Footer */}
       <footer className="border-t border-zinc-800/80 bg-zinc-950 py-4 px-4 text-center text-xs text-zinc-500 font-mono">
-        QRJump • 100% Offline Optical Air-Gap Protocol • Built with Bun, React, Vite & Tailwind
+        AirRelay • Zero-Trust P2P & Air-Gapped Optical File Transport • Built with Bun, React, WebRTC & Tailwind
       </footer>
     </div>
   );

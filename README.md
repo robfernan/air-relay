@@ -1,82 +1,162 @@
-# ⚡ QRJump
+# 🌐 AirRelay
 
-> **100% Offline, Air-Gapped Bidirectional Optical File Transfer Web Application**  
-> High-speed Screen-to-Camera transmission with an interactive animated optical ACK window.
+> **Enterprise-Grade Zero-Trust Peer-to-Peer & Air-Gapped Optical File Transport**  
+> High-performance browser-to-browser transmission featuring direct WebRTC DataChannels and bidirectional optical screen-to-camera streaming.
 
-![QRJump Dark UI](https://img.shields.io/badge/Air--Gap-Guaranteed-emerald?style=flat-square)
-![Zero Dependencies Runtime](https://img.shields.io/badge/Network-0%20Bytes-blue?style=flat-square)
-![Bun](https://img.shields.io/badge/Runtime-Bun-f472b6?style=flat-square&logo=bun)
-![License](https://img.shields.io/badge/License-MIT-zinc?style=flat-square)
-
----
-
-## 🎯 Architecture & Purpose
-
-QRJump enables **zero-connection, zero-radio (no Wi-Fi, no Bluetooth, no NFC, no USB, no cellular)** physical data transfer between two devices using only displays and cameras.
-
-It operates using an animated optical pipeline with real-time sliding-window flow control:
-1. **Transmitter (Sender)** compresses the file with `fflate` (gzip/deflate level 6), slices it into calibrated ~450-byte packets, and streams them as high-contrast QR codes at 8–20 FPS.
-2. **Receiver** scans the transmitter's display using `jsQR` over an offscreen HTML5 Canvas pipeline, decodes frames, validates packet CRC32 checksums, and updates its packet matrix.
-3. **Interactive ACK Window**: The receiver's screen dynamically renders inverted ACK QR codes indicating received chunk ranges and missing frames. The sender's camera scans this to advance its window or retransmit dropped packets.
-4. **Assembly**: Once all chunks are collected, the payload CRC32 is verified, decompressed in-memory, and the original file is delivered to the user.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
+[![Runtime: Bun](https://img.shields.io/badge/Runtime-Bun%201.4-f472b6.svg?style=flat-square&logo=bun)](https://bun.sh)
+[![Zero-Cloud Storage](https://img.shields.io/badge/Storage-0%20Bytes%20Retained-emerald.svg?style=flat-square)](https://github.com/robfernan/air-relay)
+[![Architecture: P2P + AirGap](https://img.shields.io/badge/Architecture-WebRTC%20%2B%20Optical-cyan.svg?style=flat-square)](https://github.com/robfernan/air-relay)
 
 ---
 
-## 🚀 Key Features
+## 🏛️ System Architecture
 
-- **Bidirectional Optical Protocol**: Full `INIT`, `DATA`, `ACK`, and `FIN` frame specification.
-- **Two Display Modes**:
-  - **Simultaneous Duplex (Split Screen)**: Top/Left half runs camera viewfinder, Bottom/Right half displays active transmit/ACK QR.
-  - **Alternating Half-Duplex**: Sender flashes a batch of data frames, then switches to camera view to read the receiver's ACK.
-- **Selective Retransmission**: Missing packets flagged in the ACK payload are prioritized in subsequent batches.
-- **Real-Time Visual Matrix**: Interactive packet grid with live percentage, received byte counts, and throughput (KB/s).
-- **Zero Assets / Offline Sound FX**: Web Audio API generates synthetic audio cues on successful ACK/FIN detection without external audio files.
-- **Responsive Dark HUD**: High-contrast, minimalist OLED dark interface with targeting reticles and scanline animations.
+AirRelay is engineered for security professionals, field engineers, and privacy-conscious organizations requiring reliable file transfer across heterogeneous environments without relying on third-party cloud infrastructure.
 
----
+```mermaid
+flowchart TD
+    subgraph Device_A["Device A (Sender / Receiver)"]
+        UI_A["AirRelay Web Interface"]
+        ENC_A["Memory Deflate & CRC32"]
+        CH_A["Chunking Engine"]
+    end
 
-## 📦 Protocol Specification
+    subgraph Direct_Transport["Transport Layer 1: High-Speed Radio"]
+        RTC["WebRTC SCTP DataChannel (DTLS-SRTP 1.3 Encrypted)"]
+    end
 
-```typescript
-// 1. Session Announcement (Sender -> Receiver)
-{ t: "INIT", id: string, name: string, size: number, compSize: number, total: number, win: number, mime: string, crc: number }
+    subgraph Optical_Transport["Transport Layer 2: 100% Isolated Air-Gap"]
+        OPT_TX["Optical Stream (Dynamic Chunky QR)"]
+        OPT_RX["Dual-Engine Scanner (ZXing + jsQR Hybrid)"]
+        ACK_WIN["Interactive Sliding ACK Window"]
+    end
 
-// 2. Data Packet Frame (Sender -> Receiver)
-{ t: "DATA", id: string, idx: number, data: string /* base64 compressed payload */, crc: number }
+    subgraph Device_B["Device B (Sender / Receiver)"]
+        UI_B["AirRelay Web Interface"]
+        DEC_B["Memory Inflate & Reassembly"]
+        DL_B["Direct Filesystem Write"]
+    end
 
-// 3. Flow Control ACK Frame (Receiver -> Sender)
-{ t: "ACK", id: string, got: number[], missing: number[], next: number }
-
-// 4. Transfer Complete Termination Frame (Receiver -> Sender)
-{ t: "FIN", id: string, status: "COMPLETE" }
+    UI_A --> ENC_A --> CH_A
+    CH_A -->|Direct Drop Mode| RTC --> UI_B
+    CH_A -->|Air-Gap Mode| OPT_TX -->|Photons| OPT_RX --> ACK_WIN -->|Optical Return| UI_A
+    OPT_RX --> DEC_B --> DL_B
 ```
 
 ---
 
-## 🛠️ Development & Tooling
+## ⚡ Transport Engines
 
-Built natively using [**Bun**](https://bun.sh):
+### 1. Direct AirDrop (WebRTC P2P DataChannel)
+- **Zero-Camera / High Bandwidth**: Ideal for devices on the same Wi-Fi, mobile hotspots, or direct network connections.
+- **Pairing**: 4-digit ephemeral codes (e.g., `4821`) negotiate direct peer connection via ICE/STUN without exposing credentials.
+- **Throughput**: Streams binary buffers directly through SCTP sockets in 16 KB chunks at maximum interface speed.
+- **Privacy**: End-to-end encrypted; data never touches a server or disk intermediary.
+
+### 2. Optical Air-Gap (Screen-to-Camera Photonic Flow)
+- **Zero Radio / 100% Physical Air-Gap**: Operates with Wi-Fi, Bluetooth, cellular, and USB cables completely disabled.
+- **Dual Optical Decoders**: Combines `jsQR` with `@zxing/library` to overcome screen glare, high-frequency moiré patterns, and fixed-focus webcams.
+- **Interactive Sliding-Window ACK**: Receiver continuously generates inverted optical ACK frames indicating missing packet indices for selective retransmission.
+- **Adaptive Chunky Sizing**: Supports 180B–450B chunks to accommodate budget laptop webcams, audio DAPs (e.g., Moondrop MIAD01), and high-end smartphones.
+
+---
+
+## 📊 Protocol Specifications
+
+### Optical Frame Schema
+
+```typescript
+// 1. Session Announcement (Sender -> Receiver)
+interface InitFrame {
+  t: 'INIT';
+  id: string;        // 6-character session ID
+  name: string;      // Filename
+  size: number;      // Uncompressed byte size
+  compSize: number;  // Deflate compressed byte size
+  total: number;     // Total packet chunk count
+  win: number;       // Sliding window batch size
+  mime: string;      // Content MIME type
+  crc: number;       // IEEE 802.3 CRC32 checksum
+}
+
+// 2. Data Packet Frame (Sender -> Receiver)
+interface DataFrame {
+  t: 'DATA';
+  id: string;        // Session ID
+  idx: number;       // Packet index (0-based)
+  data: string;      // Base64 compressed payload
+  crc: number;       // Packet CRC32
+}
+
+// 3. Selective Flow Control ACK (Receiver -> Sender)
+interface AckFrame {
+  t: 'ACK';
+  id: string;        // Session ID
+  got: number[];     // Successfully decoded indices
+  missing: number[]; // Dropped indices requiring retransmission
+  next: number;      // Next contiguous stream pointer
+}
+
+// 4. Session Finalization (Receiver -> Sender)
+interface FinFrame {
+  t: 'FIN';
+  id: string;
+  status: 'COMPLETE';
+}
+```
+
+---
+
+## 🔐 Enterprise Threat Model & Security Posture
+
+| Vector | AirRelay Defense |
+| :--- | :--- |
+| **Man-In-The-Middle (MITM)** | WebRTC channels utilize mandatory DTLS encryption. Optical transfers are physically bounded by line-of-sight. |
+| **Data Retention** | All file slicing, compression, reassembly, and decompressions occur exclusively in ephemeral client memory (`Uint8Array`). |
+| **Network Snooping** | Optical Air-Gap mode operates in hardware Airplane Mode with all radio interfaces unpowered. |
+| **Data Corruption** | Dual checksum validation: per-packet IEEE 802.3 CRC32 + full file integrity verification prior to disk write. |
+
+---
+
+## 🚀 Quickstart & Development
+
+AirRelay is built natively with **Bun**:
 
 ```bash
 # Clone the repository
-git clone git@github.com:robfernan/qr-jump.git
-cd qr-jump
+git clone git@github.com:robfernan/air-relay.git
+cd air-relay
 
-# Install dependencies using Bun
+# Install dependencies
 bun install
 
-# Start local dev server
-bun dev
+# Start local network development server
+bun dev --host
 
-# Build production bundle with zero type errors
+# Run test suite (Verifies CRC32, Base64, and Sliding Window simulation)
+bun test
+
+# Build production bundle
 bun run build
 ```
 
 ---
 
-## 🛡️ Security & Air-Gap Verification
+## 🧩 Browser Extension Mode
 
-QRJump requires **zero network requests**:
-- No external CDN scripts
-- No analytical trackers or background telemetry
-- Operates in complete Airplane Mode with radios physically disconnected or disabled
+AirRelay includes a native **Chromium Manifest V3** configuration:
+
+1. Build the production output:
+   ```bash
+   bun run build
+   ```
+2. Navigate to `chrome://extensions` (or `edge://extensions`) in your browser.
+3. Enable **Developer mode** (top-right switch).
+4. Click **Load unpacked** and select the `dist/` directory.
+
+---
+
+## 📜 License
+
+Distributed under the **MIT License**. Created by [robfernan](https://github.com/robfernan).
