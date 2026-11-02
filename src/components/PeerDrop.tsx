@@ -39,8 +39,18 @@ export const PeerDrop: React.FC<PeerDropProps> = () => {
     const code = Math.floor(1000 + Math.random() * 9000);
     const customId = `qjump-${code}`;
 
+    // Configure Google and public STUN servers so devices can connect
+    // across different networks (e.g. Phone on 5G/cellular, Laptop on Wi-Fi)
     const peer = new Peer(customId, {
       debug: 1,
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:global.stun.twilio.com:3478' }
+        ]
+      }
     });
 
     peer.on('open', (id) => {
