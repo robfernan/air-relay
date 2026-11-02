@@ -14,5 +14,11 @@
   },
   "permissions": [
     "storage"
-  ]
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "air-relay@robfernan.github.io",
+      "strict_min_version": "109.0"
+    }
+  }
 }
