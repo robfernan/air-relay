@@ -15,10 +15,11 @@ export default defineConfig({
       manifest: {
         name: 'AirRelay • Zero-Trust File Transport',
         short_name: 'AirRelay',
-        description: 'Enterprise P2P and air-gapped optical file transport.',
+        description: 'Instant zero-trust peer-to-peer and air-gapped optical file transport.',
         theme_color: '#09090b',
         background_color: '#09090b',
         display: 'standalone',
+        orientation: 'portrait',
         icons: [
           {
             src: 'favicon.svg',
@@ -26,7 +27,23 @@ export default defineConfig({
             type: 'image/svg+xml',
             purpose: 'any maskable'
           }
-        ]
+        ],
+        share_target: {
+          action: './',
+          method: 'POST',
+          enctype: 'multipart/form-data',
+          params: {
+            title: 'title',
+            text: 'text',
+            url: 'url',
+            files: [
+              {
+                name: 'files',
+                accept: ['*/*']
+              }
+            ]
+          }
+        }
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}']
