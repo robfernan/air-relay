@@ -4,12 +4,12 @@
   "version": "1.0.0",
   "description": "Enterprise-grade peer-to-peer file transport: WebRTC encrypted P2P datachannels and zero-trust air-gapped optical QR streams.",
   "icons": {
-    "16": "public/favicon.svg",
-    "48": "public/favicon.svg",
-    "128": "public/favicon.svg"
+    "16": "favicon.svg",
+    "48": "favicon.svg",
+    "128": "favicon.svg"
   },
   "action": {
-    "default_title": "Open QRJump",
+    "default_title": "AirRelay Drop",
     "default_popup": "index.html"
   },
   "permissions": [
